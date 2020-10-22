@@ -10,5 +10,9 @@ target 'EGrow' do
 pod 'Firebase/Analytics'
 pod 'Firebase/Database'
 pod 'Firebase/Firestore'
+pod 'Firebase/Messaging'
+pod 'Firebase/Storage'
+
+pod 'SwiftCharts', '~> 0.6.5'
 
 end
