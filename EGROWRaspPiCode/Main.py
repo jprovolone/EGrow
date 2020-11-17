@@ -36,7 +36,7 @@ floatSwitch = gpiozero.InputDevice(floatSwitchPin, active_state=None)
 dht_device = adafruit_dht.DHT11(dhtPin)
 # Firebase Database Configuration
 config = {
-  "apiKey": "AIzaSyAfAAQdELCHn_sVD14nKEh3DA2aKw7mJ-U", #----- Change to customize! -----
+  "apiKey": "******", #----- Change to customize! -----
   "authDomain": "egrow-20d1c.firebaseapp.com", #----- Change to customize! -----
   "databaseURL": "https://egrow-20d1c.firebaseio.com", #----- Change to customize! -----
   "storageBucket": "egrow-20d1c.appspot.com" #----- Change to customize! -----
