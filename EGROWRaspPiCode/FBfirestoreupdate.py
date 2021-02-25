@@ -15,18 +15,10 @@ import time
 import datetime
 from time import sleep
 import serial
-#DHT11Libraries
-# import adafruit_dht
-# from board import *
-# #set DHT11Pin
-# dhtPin = 17
-
-#set DHT Device @ dhtPin
-#dht_device = adafruit_dht.DHT11(dhtPin)
 
 # Firebase Database Configuration
 config = {
-  "apiKey": "********", #----- Change to customize! -----
+  "apiKey": "AIzaSyAfAAQdELCHn_sVD14nKEh3DA2aKw7mJ-U", #----- Change to customize! -----
   "authDomain": "egrow-20d1c.firebaseapp.com", #----- Change to customize! -----
   "databaseURL": "https://egrow-20d1c.firebaseio.com", #----- Change to customize! -----
   "storageBucket": "egrow-20d1c.appspot.com" #----- Change to customize! -----
@@ -69,22 +61,30 @@ def takePicture(date, time):
     imageBlob.upload_from_filename(imagePath)
     os.remove(imagePath)
 
-def sendToNoah():
-    if __name__ == '__main__':
-        ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
-        ser.flush()
+def sendToNoah(humidity, temperature, soilMoistureAvg, now):
+    
+    
+    dateFormatted = now.strftime("%b%d%Y")
+    
+    #print("Sending Noah: "+dateFormatted+temperature+humidity+soilMoisture)
+    print("Starting serial")
+    ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+    time.sleep(10)
+    ser.flush()
+    line = ser.readline().decode('utf-8').rstrip()
+    print("sending info")
+    ser.write(dateFormatted.encode('utf-8'))
+    ser.write(str(temperature).encode('utf-8'))
+    ser.write(str(humidity).encode('utf-8'))
+    ser.write(str(soilMoisture).encode('utf-8'))
+    ser.write(b"\n")
+    time.sleep(1)
+    print("reading info")
+    line = ser.readline().decode('utf-8').rstrip()
+    print("---"+line)
+    
 
-#         ser.write(date.encode('utf-8'))
-#         ser.write(b"%")
-        ser.write(str(humidity.encode('utf-8')))
-        ser.write(b"%")
-#         ser.write(temperature.encode('utf-8'))
-        ser.write(b"\n")
-        
-        line = ser.readline().decode('utf-8').rstrip()
-        print(line)
-
-def main(humidity, temperature, soilMoisture, date, time):
+def main(humidity, temperature, soilMoisture1, soilMoisture2, soilMoisture3, date, time, now):
     errNum = 0
     while(errNum == 0):
         takePicture(date, time)
@@ -95,17 +95,17 @@ def main(humidity, temperature, soilMoisture, date, time):
         doc_ref.set({
         u'humidity': humidity,
         u'temperature': temperature,
-        u'soilMoisture': soilMoisture,
+        u'soilMoisture1': soilMoisture1,
+        u'soilMoisture2': soilMoisture2,
+        u'soilMoisture3': soilMoisture3,
         u'date': date,
         u'time': time
         })
+        soilMoistureAvg = (soilMoisture1 + soilMoisture2 + soilMoisture3) / 3
         print("success in updating firestore!")
-        #sendToNoah()
+        sendToNoah(humidity, temperature, soilMoistureAvg, now)
         errNum = errNum + 1
-#     except Exception as e:
-#         print("There seems to have been an error:")
-#         print(e)
-#         sys.exit(0)
+
 
         
         
