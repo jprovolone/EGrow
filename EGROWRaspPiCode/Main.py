@@ -13,12 +13,15 @@ import spidev
 #DHT11Libraries
 import adafruit_dht
 from board import *
+import Adafruit_ADS1x15
+
+
 
 #set DHT11Pin & Relay Pins
 dhtPin = 17
-heatingFanRelayPin = 27
+heatingFanRelayPin = 27 #THIS PROBABLY WONT WORK
 fanRelayPin = 16
-plant1RelayPin = 22
+plant1RelayPin = 23
 plant2RelayPin = 5
 plant3RelayPin = 6
 hoseRelayPin = 26
@@ -32,8 +35,15 @@ plant3Relay = gpiozero.OutputDevice(plant3RelayPin, active_high=False, initial_v
 hoseRelay = gpiozero.OutputDevice(hoseRelayPin, active_high=False, initial_value=True)
 floatSwitch = gpiozero.InputDevice(floatSwitchPin, active_state=None)
 
+
 #set DHT Device @ dhtPin
 dht_device = adafruit_dht.DHT11(dhtPin)
+
+#soil moisture device setup
+# Create an ADS1115 ADC (16-bit) instance.
+adc = Adafruit_ADS1x15.ADS1115()
+GAIN = 1
+
 # Firebase Database Configuration
 config = {
   "apiKey": "AIzaSyAfAAQdELCHn_sVD14nKEh3DA2aKw7mJ-U", #----- Change to customize! -----
@@ -51,20 +61,24 @@ spi.max_speed_hz=1000000
 
 def getSoilMoistureValues():
     try:
-        val1 = spi.xfer2([1,(8+0)<<4,0])
-        data1 = ((val1[1]&3) << 8) + val1[2]
-
-        val2 = spi.xfer2([1,(8+1)<<4,0])
-        data2 = ((val2[1]&3) << 8) + val2[2]
-        
-        val3 = spi.xfer2([1,(8+2)<<4,0])
-        data3 = ((val3[1]&3) << 8) + val3[2]
-
+        print('Reading ADS1x15 values, press Ctrl-C to quit...')
+        # Print nice channel column headers.
+        print('| {0:>6} | {1:>6} | {2:>6} | {3:>6} |'.format(*range(4)))
+        print('-' * 37)
+        values = [0]*4
+        for i in range(4):
+            values[i] = adc.read_adc(i, gain=GAIN)
+            print('| {0:>6} | {1:>6} | {2:>6} | {3:>6} |'.format(*values))
+    
+        data1 = values[0]
+        data2 = values[1]
+        data3 = values[3]
+        print(data1, data2, data3)
     except:
         print("Couldn't find any soil moisture sensors. Help me!")
-        data1 = 500
-        data2 = 500
-        data3 = 500
+        data1 = 26364
+        data2 = 26364
+        data3 = 26364
     
     soilMoistureValues = convertSMToPercent(data1, data2, data3)
     
@@ -74,20 +88,18 @@ def convertSMToPercent(data1, data2, data3):
     values = [data1, data2, data3]
     index = 0
     for sensorValue in values:
-        sensorValue = _map(sensorValue, 1023,0,0,1023)
-        percentValue = round((sensorValue-1)*100/(645-1),0)
+        #sensorValue = _map(sensorValue,26364,7162,7162,26364)
+        percentValue = round((sensorValue-7162)/192.02,0)
         percentValue = int(percentValue)
+        percentValue = 100 - percentValue
         if percentValue < 10:
             percentValue = str(percentValue)
             percentValue = percentValue.zfill(2)
-        elif percentValue >= 100:
-            percentValue = 99
+        elif percentValue > 100:
+            percentValue = 100
         values[index] = percentValue
         index += 1
     return values
-
-def _map(x, in_min, in_max, out_min, out_max):
-    return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 def getSensorValues():
     #DHT11
@@ -136,19 +148,19 @@ def getProgramMode():
 def waterPlant1():
     print("watering plant 1")
     plant1Relay.off()
-    time.sleep(30)
+    time.sleep(5)
     plant1Relay.on()
     
 def waterPlant2():
     print("watering plant 2")
     plant2Relay.off()
-    time.sleep(30)
+    time.sleep(5)
     plant2Relay.on()
 
 def waterPlant3():
     print("watering plant 3")
     plant3Relay.off()
-    time.sleep(30)
+    time.sleep(5)
     plant3Relay.on()
     
 def turnOnHose(errNum):
@@ -178,8 +190,8 @@ def turnOnHose(errNum):
         else:
             waterLevel = 3 ##Error code for something is wrong with the hose fill
             db.child("waterlevel").update({"waterlevel": waterLevel})
-            print("There was an error when attempting to fill the tank. The program is now closing")
-            sys.exit(0)
+            print("There was an error when attempting to fill the tank.")
+            return
     print("water level is ok")
     db.child("waterlevel").update({"waterlevel": waterLevel})
     errNum = 0
@@ -192,7 +204,7 @@ def turnOnFan():
 
 def turnOnHeatingFan():
     heatingFanRelay.off()
-    time.sleep(120)
+    time.sleep(110)
     heatingFanRelay.on()
 
 def fbFirestoreUpdate(humidity, temperature, soilMoisture1, soilMoisture2, soilMoisture3, date, time, now):
@@ -246,24 +258,24 @@ def automaticMode():
     #check water level in tank
     errNum = 0
     if waterLevel != 1:
-       turnOnHose(errNum)
-
+      turnOnHose(errNum)
+   
     #check temperature, humidity, soil moisture and act accordingly
     if temperature > 90 or humidity > 70:
         print("fan on")
         fanThread.start()
+
     elif temperature < 40:
         heatingFanThread.start()
     
     #get desired soil moisture values
+    print("getting sm values")
     desiredSM = getDesiredSMvalues()
     
     if soilMoisture1 < desiredSM[0]:
         waterPlant1Thread.start()
-    
     if soilMoisture2 < desiredSM[1]:
-        waterPlant2Thread.start()
-    
+        waterPlant2Thread.start()    
     if soilMoisture3 < desiredSM[2]:
         waterPlant3Thread.start()
 
@@ -335,17 +347,77 @@ def manualMode():
         if soilMoisture3 < desiredSM[2]:
             waterPlant3Thread.start()
 
+def troubleshootCode(floatswitchCheck, takePic):
+    now = datetime.datetime.now()
+    nowFormatted = now.strftime("%b %d %Y %H:%M:%S")
+    date = now.strftime("%b %d %Y")
+    time = now.strftime("%H:%M:%S")
+    hour = now.strftime("%H")
+    minute = now.strftime("%M")
+    print("Time that this code ran: "+nowFormatted)
+    #Get Sensor Values
+    sensorValues = getSensorValues()
+    temperature = sensorValues[0]
+    humidity = sensorValues[1]
+    waterLevel = sensorValues[2]
+    soilMoisture1 = sensorValues[3]
+    soilMoisture2 = sensorValues[4]
+    soilMoisture3 = sensorValues[5]
+
+    print(sensorValues)
+
+    #Thread setup
+    dbThread = threading.Thread(target=updateFBdatabase, args=(temperature, humidity, waterLevel, soilMoisture1, soilMoisture2, soilMoisture3))
+    firestoreThread = threading.Thread(target=fbFirestoreUpdate, args=(humidity, temperature, soilMoisture1, soilMoisture2, soilMoisture3, date, time, now))
+    waterPlant1Thread = threading.Thread(target=waterPlant1)
+    waterPlant2Thread = threading.Thread(target=waterPlant2)
+    waterPlant3Thread = threading.Thread(target=waterPlant3)
+    fanThread = threading.Thread(target=turnOnFan)
+    heatingFanThread = threading.Thread(target=turnOnHeatingFan)
+    
+    if takePic == "1":
+        firestoreThread.start()
+
+    #start DB thread
+    dbThread.start()
+    
+    if floatswitchCheck == "1":
+        errNum = 0
+        if waterLevel != 1:
+            print("Running Hose check")
+            turnOnHose(errNum)
+   
+    print("TURNING FAN ON")
+    fanThread.start()
+
+    heatingFanThread.start()    
+    #get desired soil moisture values
+    desiredSM = getDesiredSMvalues()
+    print("DESIRED SM VALUES----"+str(desiredSM[0]), str(desiredSM[1]), str(desiredSM[2]))
+
+    waterPlant1Thread.start()
+    waterPlant2Thread.start()
+    waterPlant3Thread.start()    
+
     
 
 #Begin Main, catch errors
 try:
-    errNum = 0
-    mode = getProgramMode()
-    print("mode: "+str(mode))
-    if mode == 1:
-        automaticMode()
-    if mode == 2:
-        manualMode()
+    ##SET THIS VALUE TO 1 TO TROUBLESHOOT
+    troubleshoot = 1
+    if troubleshoot == 1:
+        floatswitchCheck = input("check float switch? 1 - Yes, 0 - No--------")
+        takePic = input("Run take pic code? 1 - Yes, 0 - No ------------")
+        errNum = 0
+        troubleshootCode(floatswitchCheck, takePic)
+    else:
+        errNum = 0
+        mode = getProgramMode()
+        print("mode: "+str(mode))
+        if mode == 1:
+            automaticMode()
+        if mode == 2:
+            manualMode()
 except Exception as e:
     if errNum < 1:
         errNum = errNum + 1
